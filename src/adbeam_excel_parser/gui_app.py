@@ -4,7 +4,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from adbeam_excel_parser.audit_runner import run_excel_audit
+from adbeam_excel_parser.audit_runner import attach_output_file_path, run_excel_audit
+from adbeam_excel_parser.excel_exporter import export_audit_to_excel
 from adbeam_excel_parser.excel_reader import read_excel_summary
 
 WINDOW_TITLE = "AdBeam Excel Parser"
@@ -37,7 +38,7 @@ class ExcelParserApp:
 
         title_label = ttk.Label(
             top_frame,
-            text="AdBeam Excel Parser — шаг 3",
+            text="AdBeam Excel Parser — шаг 4",
             font=("Segoe UI", 16, "bold"),
         )
         title_label.grid(row=0, column=0, sticky="w", pady=(0, 10))
@@ -58,7 +59,7 @@ class ExcelParserApp:
         run_button = ttk.Button(controls_frame, text="Проверить Excel", command=self._analyze_file)
         run_button.grid(row=0, column=0, padx=(0, 8))
 
-        audit_button = ttk.Button(controls_frame, text="Начать обход сайтов", command=self._run_audit)
+        audit_button = ttk.Button(controls_frame, text="Начать обход и сохранить Excel", command=self._run_audit)
         audit_button.grid(row=0, column=1, padx=(0, 8))
 
         clear_button = ttk.Button(controls_frame, text="Очистить", command=self._clear_output)
@@ -66,7 +67,7 @@ class ExcelParserApp:
 
         hint_label = ttk.Label(
             top_frame,
-            text="Обход пока идет последовательно и rule-based. CLI-режим тоже сохранен.",
+            text="После обхода создается новый xlsx: исходная структура сохраняется, в начало добавляются служебные колонки и цвет строки.",
         )
         hint_label.grid(row=3, column=0, sticky="w", pady=(10, 0))
 
@@ -123,6 +124,8 @@ class ExcelParserApp:
             self.root.update_idletasks()
 
             summary = run_excel_audit(file_path, progress_callback=self._on_audit_progress)
+            output_file_path = export_audit_to_excel(file_path, summary)
+            attach_output_file_path(summary, output_file_path)
         except Exception as exc:
             self.status_var.set("Ошибка при обходе сайтов.")
             messagebox.showerror("Ошибка", str(exc))
@@ -130,7 +133,7 @@ class ExcelParserApp:
 
         self._set_output(summary.model_dump_json(indent=2, exclude_none=True))
         self.status_var.set(
-            f"Готово: проверено {summary.audited_rows} сайтов. Статусы: {summary.status_counts}"
+            f"Готово: проверено {summary.audited_rows} сайтов. Итоговый файл: {summary.output_file_path}"
         )
 
     def _on_audit_progress(self, current: int, total: int, website: str) -> None:
@@ -153,7 +156,6 @@ class ExcelParserApp:
         self.file_path_var.set("")
         self.output_text.delete("1.0", tk.END)
         self.status_var.set("Выберите Excel-файл для проверки или обхода сайтов.")
-
 
 
 def run_gui() -> None:

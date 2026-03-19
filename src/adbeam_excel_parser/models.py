@@ -55,6 +55,8 @@ class SiteSignals(BaseModel):
     has_payment: bool = False
     has_consumer_language: bool = False
     request_only: bool = False
+    callback_only: bool = False
+    quote_only: bool = False
     has_b2b_language: bool = False
     hacked_terms: list[str] = Field(default_factory=list)
 
@@ -81,3 +83,4 @@ class AuditRunSummary(BaseModel):
     audited_rows: int
     status_counts: dict[str, int] = Field(default_factory=dict)
     results: list[SiteAuditResult] = Field(default_factory=list)
+    output_file_path: str | None = None

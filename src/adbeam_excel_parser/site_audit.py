@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Callable
 from urllib.parse import urlparse
 
 import httpx
@@ -33,8 +32,21 @@ POSITIVE_CATALOG_TERMS = (
     "shop",
     "product",
 )
-POSITIVE_CART_TERMS = ("корзин", "в корзину", "cart", "basket")
-POSITIVE_BUY_TERMS = ("купить", "оформить заказ", "заказать онлайн", "buy now")
+POSITIVE_CART_TERMS = (
+    "корзин",
+    "в корзину",
+    "моя корзина",
+    "cart",
+    "basket",
+    "shopping-cart",
+    "checkout",
+)
+POSITIVE_BUY_TERMS = (
+    "купить",
+    "заказать онлайн",
+    "buy now",
+    "add to cart",
+)
 POSITIVE_DELIVERY_TERMS = ("доставк", "самовывоз", "delivery", "shipping")
 POSITIVE_PAYMENT_TERMS = ("оплат", "visa", "mastercard", "mir", "payment")
 POSITIVE_CONSUMER_TERMS = (
@@ -44,15 +56,28 @@ POSITIVE_CONSUMER_TERMS = (
     "новинки",
     "заказ онлайн",
     "быстрый заказ",
-    "оформить заказ",
     "доставка по",
 )
 NEGATIVE_REQUEST_ONLY_TERMS = (
     "оставить заявку",
+    "отправить заявку",
+    "получить консультацию",
+    "оставьте контакты",
+    "связаться с менеджером",
+)
+NEGATIVE_CALLBACK_TERMS = (
+    "заказать звонок",
+    "обратный звонок",
+    "перезвоните мне",
+    "мы вам перезвоним",
+    "callback",
+)
+NEGATIVE_QUOTE_TERMS = (
     "запросить кп",
     "коммерческ",
-    "связаться с менеджером",
-    "получить консультацию",
+    "запросить предложение",
+    "получить прайс",
+    "рассчитать стоимость",
 )
 NEGATIVE_B2B_TERMS = (
     "оптов",
@@ -73,6 +98,24 @@ HACKED_TERMS = (
     "порно",
 )
 PRICE_PATTERN = re.compile(r"\d[\d\s]{0,12}(?:₽|руб\.?|рублей)", flags=re.IGNORECASE)
+
+CATALOG_HTML_PATTERNS = (
+    "/catalog",
+    "/catalogue",
+    "/shop",
+    "/products",
+    "/product/",
+    "/catalog/",
+)
+CART_HTML_PATTERNS = (
+    "/cart",
+    "/basket",
+    "cart",
+    "basket",
+    "shopping-cart",
+    "checkout",
+    "data-cart",
+)
 
 
 @dataclass(slots=True)
@@ -199,14 +242,16 @@ def extract_signals(html: str) -> SiteSignals:
     hacked_terms = find_present_terms(text_lower, HACKED_TERMS)
 
     return SiteSignals(
-        has_catalog=contains_any(text_lower, POSITIVE_CATALOG_TERMS) or contains_any(html_lower, ("/catalog", "/catalogue", "/shop", "/products")),
-        has_cart=contains_any(text_lower, POSITIVE_CART_TERMS) or contains_any(html_lower, ("cart", "basket")),
+        has_catalog=contains_any(text_lower, POSITIVE_CATALOG_TERMS) or contains_any(html_lower, CATALOG_HTML_PATTERNS),
+        has_cart=contains_any(text_lower, POSITIVE_CART_TERMS) or contains_any(html_lower, CART_HTML_PATTERNS),
         has_buy_button=contains_any(text_lower, POSITIVE_BUY_TERMS),
         has_price=bool(PRICE_PATTERN.search(text_lower)) or "₽" in html or "руб" in text_lower,
         has_delivery=contains_any(text_lower, POSITIVE_DELIVERY_TERMS),
         has_payment=contains_any(text_lower, POSITIVE_PAYMENT_TERMS),
         has_consumer_language=contains_any(text_lower, POSITIVE_CONSUMER_TERMS),
         request_only=contains_any(text_lower, NEGATIVE_REQUEST_ONLY_TERMS),
+        callback_only=contains_any(text_lower, NEGATIVE_CALLBACK_TERMS),
+        quote_only=contains_any(text_lower, NEGATIVE_QUOTE_TERMS),
         has_b2b_language=contains_any(text_lower, NEGATIVE_B2B_TERMS),
         hacked_terms=hacked_terms,
     )
@@ -216,11 +261,9 @@ def classify_signals(signals: SiteSignals) -> tuple[SiteFitStatus, str]:
     if signals.hacked_terms:
         return SiteFitStatus.HACKED, f"Найдены подозрительные слова: {', '.join(signals.hacked_terms)}"
 
-    strong_direct = signals.has_cart or signals.has_buy_button or signals.has_price
-    positive_score = sum(
+    cart_support_score = sum(
         (
             signals.has_catalog,
-            signals.has_cart,
             signals.has_buy_button,
             signals.has_price,
             signals.has_delivery,
@@ -228,17 +271,33 @@ def classify_signals(signals: SiteSignals) -> tuple[SiteFitStatus, str]:
             signals.has_consumer_language,
         )
     )
+    retail_without_cart_score = sum(
+        (
+            signals.has_catalog,
+            signals.has_buy_button,
+            signals.has_price,
+            signals.has_consumer_language,
+        )
+    )
+    leadgen_without_cart = not signals.has_cart and (signals.request_only or signals.callback_only or signals.quote_only)
+    hard_b2b_without_cart = not signals.has_cart and signals.has_b2b_language and not signals.has_consumer_language
 
-    if positive_score >= 4 and strong_direct and not signals.request_only:
-        return SiteFitStatus.FIT_NOW, "Есть явные direct/ecom сигналы."
+    if signals.has_cart:
+        if cart_support_score >= 2 and not leadgen_without_cart:
+            return SiteFitStatus.FIT_NOW, "Найдена корзина и есть подтверждающие ecom-сигналы."
 
-    if positive_score >= 2 and not (signals.request_only and not strong_direct):
-        return SiteFitStatus.FIT_LATER, "Есть часть сигналов, но direct-механика слабая или неполная."
+        return SiteFitStatus.FIT_LATER, "Корзина найдена, но остальных ecom-сигналов пока мало."
 
-    if signals.request_only or (signals.has_b2b_language and not strong_direct):
-        return SiteFitStatus.NOT_FIT, "Сайт больше похож на B2B/leadgen без прямой покупки."
+    if leadgen_without_cart:
+        return SiteFitStatus.NOT_FIT, "Нет корзины: сайт работает через заявку / звонок / запрос КП."
 
-    return SiteFitStatus.NOT_FIT, "Недостаточно direct/ecom сигналов."
+    if hard_b2b_without_cart:
+        return SiteFitStatus.NOT_FIT, "Нет корзины: сайт больше похож на B2B/промышленный корпоративный ресурс."
+
+    if retail_without_cart_score >= 2 and signals.has_catalog:
+        return SiteFitStatus.FIT_LATER, "Есть товарная структура, но без корзины сайт не fit now."
+
+    return SiteFitStatus.NOT_FIT, "Нет корзины и недостаточно direct/ecom-сигналов."
 
 
 def normalize_url(raw_url: str | None) -> str | None:

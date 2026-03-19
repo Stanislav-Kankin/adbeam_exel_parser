@@ -62,3 +62,9 @@ def find_company_name(values: dict[str, object]) -> str | None:
             return text
 
     return None
+
+
+
+def attach_output_file_path(summary: AuditRunSummary, output_file_path: Path) -> AuditRunSummary:
+    summary.output_file_path = str(output_file_path)
+    return summary

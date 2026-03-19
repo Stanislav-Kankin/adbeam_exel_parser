@@ -9,7 +9,8 @@ SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from adbeam_excel_parser.audit_runner import run_excel_audit
+from adbeam_excel_parser.audit_runner import attach_output_file_path, run_excel_audit
+from adbeam_excel_parser.excel_exporter import export_audit_to_excel
 from adbeam_excel_parser.excel_reader import read_excel_summary
 from adbeam_excel_parser.gui_app import run_gui
 
@@ -25,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--audit",
         action="store_true",
-        help="Run site fetching and rule-based classification.",
+        help="Run site fetching, rule-based classification and save a new Excel file.",
     )
     return parser
 
@@ -42,6 +43,8 @@ def main() -> int:
 
     if args.audit:
         audit_summary = run_excel_audit(input_path)
+        output_file_path = export_audit_to_excel(input_path, audit_summary)
+        attach_output_file_path(audit_summary, output_file_path)
         print(audit_summary.model_dump_json(indent=2, exclude_none=True))
         return 0
 
