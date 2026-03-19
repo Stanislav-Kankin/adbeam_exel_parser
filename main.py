@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -11,6 +10,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from adbeam_excel_parser.excel_reader import read_excel_summary
+from adbeam_excel_parser.gui_app import run_gui
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -19,7 +19,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--input",
-        required=True,
         help="Path to the source Excel file (.xlsx)",
     )
     return parser
@@ -28,6 +27,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+
+    if not args.input:
+        run_gui()
+        return 0
 
     input_path = Path(args.input).expanduser().resolve()
     summary = read_excel_summary(input_path)

@@ -10,9 +10,10 @@
 - пытается найти колонку с сайтом
 - считает строки с сайтами
 - выводит JSON summary в консоль
+- открывает простое локальное окно для выбора Excel-файла кнопкой
 
 Это еще не парсер сайтов.
-Сейчас это только безопасный стартовый каркас для чтения Excel.
+Сейчас это безопасный стартовый каркас для чтения Excel и удобного локального запуска.
 
 ## Структура проекта
 
@@ -25,6 +26,7 @@ adbeam_excel_parser/
     └── adbeam_excel_parser/
         ├── __init__.py
         ├── excel_reader.py
+        ├── gui_app.py
         └── models.py
 ```
 
@@ -35,22 +37,11 @@ adbeam_excel_parser/
 
 ## Как создать виртуальное окружение в Windows PowerShell
 
-### Вариант 1. Через `py`
-
 ```powershell
-py -3 -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### Вариант 2. Через `python`, если он есть в PATH
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ## Если PowerShell блокирует активацию
@@ -69,13 +60,26 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 ## Как запустить
 
+### Вариант 1. Простой локальный интерфейс
+
 ```powershell
-python main.py --input .\data\companies.xlsx
+python main.py
+```
+
+Откроется окно, где можно:
+- выбрать Excel-файл кнопкой
+- запустить проверку
+- увидеть JSON summary прямо в окне
+
+### Вариант 2. Старый CLI-режим
+
+```powershell
+python main.py --input "C:\Users\Пользователь\Downloads\Основной сегмент 2026-03-19 12-30.xlsx"
 ```
 
 ## Что будет на выходе
 
-В консоли появится JSON примерно такого вида:
+В окне или в консоли появится JSON примерно такого вида:
 
 ```json
 {
@@ -89,10 +93,17 @@ python main.py --input .\data\companies.xlsx
 }
 ```
 
+## Что уже проверено
+
+На текущем этапе мы подтвердили:
+- проект запускается локально
+- Excel читается
+- колонка с сайтами находится
+- preview строк строится корректно
+
 ## Следующий шаг
 
-Следующим шагом можно добавить:
-
+Следующим шагом логично добавить:
 - нормализацию URL
 - базовый HTTP обход сайтов
 - первичную feature extraction логику

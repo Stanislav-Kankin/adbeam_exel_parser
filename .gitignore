@@ -7,4 +7,3 @@ __pycache__/
 .idea/
 output/
 *.sqlite3
-.venv-1
