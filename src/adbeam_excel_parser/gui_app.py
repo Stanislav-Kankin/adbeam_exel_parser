@@ -4,10 +4,11 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from adbeam_excel_parser.audit_runner import run_excel_audit
 from adbeam_excel_parser.excel_reader import read_excel_summary
 
 WINDOW_TITLE = "AdBeam Excel Parser"
-WINDOW_SIZE = "980x720"
+WINDOW_SIZE = "1180x780"
 TEXT_FONT = ("Consolas", 10)
 
 
@@ -16,10 +17,10 @@ class ExcelParserApp:
         self.root = tk.Tk()
         self.root.title(WINDOW_TITLE)
         self.root.geometry(WINDOW_SIZE)
-        self.root.minsize(840, 520)
+        self.root.minsize(920, 560)
 
         self.file_path_var = tk.StringVar()
-        self.status_var = tk.StringVar(value="Выберите Excel-файл для проверки.")
+        self.status_var = tk.StringVar(value="Выберите Excel-файл для проверки или обхода сайтов.")
 
         self._build_layout()
 
@@ -36,7 +37,7 @@ class ExcelParserApp:
 
         title_label = ttk.Label(
             top_frame,
-            text="AdBeam Excel Parser — шаг 2",
+            text="AdBeam Excel Parser — шаг 3",
             font=("Segoe UI", 16, "bold"),
         )
         title_label.grid(row=0, column=0, sticky="w", pady=(0, 10))
@@ -57,12 +58,15 @@ class ExcelParserApp:
         run_button = ttk.Button(controls_frame, text="Проверить Excel", command=self._analyze_file)
         run_button.grid(row=0, column=0, padx=(0, 8))
 
+        audit_button = ttk.Button(controls_frame, text="Начать обход сайтов", command=self._run_audit)
+        audit_button.grid(row=0, column=1, padx=(0, 8))
+
         clear_button = ttk.Button(controls_frame, text="Очистить", command=self._clear_output)
-        clear_button.grid(row=0, column=1)
+        clear_button.grid(row=0, column=2)
 
         hint_label = ttk.Label(
             top_frame,
-            text="Сейчас интерфейс работает через выбор файла кнопкой. CLI-режим тоже сохранен.",
+            text="Обход пока идет последовательно и rule-based. CLI-режим тоже сохранен.",
         )
         hint_label.grid(row=3, column=0, sticky="w", pady=(10, 0))
 
@@ -90,32 +94,66 @@ class ExcelParserApp:
         )
         if selected_file:
             self.file_path_var.set(selected_file)
-            self.status_var.set("Файл выбран. Нажмите 'Проверить Excel'.")
+            self.status_var.set("Файл выбран. Можно проверить Excel или начать обход сайтов.")
 
     def _analyze_file(self) -> None:
-        raw_path = self.file_path_var.get().strip()
-        if not raw_path:
-            messagebox.showwarning("Нет файла", "Сначала выберите Excel-файл.")
+        file_path = self._resolve_file_path()
+        if file_path is None:
             return
 
         try:
-            file_path = Path(raw_path).expanduser().resolve()
             summary = read_excel_summary(file_path)
         except Exception as exc:
             self.status_var.set("Ошибка при чтении Excel.")
             messagebox.showerror("Ошибка", str(exc))
             return
 
-        self.output_text.delete("1.0", tk.END)
-        self.output_text.insert("1.0", summary.model_dump_json(indent=2, exclude_none=True))
+        self._set_output(summary.model_dump_json(indent=2, exclude_none=True))
         self.status_var.set(
             f"Готово: лист '{summary.sheet_name}', строк {summary.total_rows}, сайтов найдено {summary.rows_with_websites}."
         )
 
+    def _run_audit(self) -> None:
+        file_path = self._resolve_file_path()
+        if file_path is None:
+            return
+
+        try:
+            self.status_var.set("Старт обхода сайтов...")
+            self.root.update_idletasks()
+
+            summary = run_excel_audit(file_path, progress_callback=self._on_audit_progress)
+        except Exception as exc:
+            self.status_var.set("Ошибка при обходе сайтов.")
+            messagebox.showerror("Ошибка", str(exc))
+            return
+
+        self._set_output(summary.model_dump_json(indent=2, exclude_none=True))
+        self.status_var.set(
+            f"Готово: проверено {summary.audited_rows} сайтов. Статусы: {summary.status_counts}"
+        )
+
+    def _on_audit_progress(self, current: int, total: int, website: str) -> None:
+        self.status_var.set(f"Обход {current}/{total}: {website}")
+        self.root.update_idletasks()
+
+    def _resolve_file_path(self) -> Path | None:
+        raw_path = self.file_path_var.get().strip()
+        if not raw_path:
+            messagebox.showwarning("Нет файла", "Сначала выберите Excel-файл.")
+            return None
+
+        return Path(raw_path).expanduser().resolve()
+
+    def _set_output(self, text: str) -> None:
+        self.output_text.delete("1.0", tk.END)
+        self.output_text.insert("1.0", text)
+
     def _clear_output(self) -> None:
         self.file_path_var.set("")
         self.output_text.delete("1.0", tk.END)
-        self.status_var.set("Выберите Excel-файл для проверки.")
+        self.status_var.set("Выберите Excel-файл для проверки или обхода сайтов.")
+
 
 
 def run_gui() -> None:

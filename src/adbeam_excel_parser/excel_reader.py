@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
 
-from adbeam_excel_parser.models import ExcelReadSummary, RowPreview
+from adbeam_excel_parser.models import ExcelReadSummary, ExcelWebsiteRows, RowPreview, WebsiteRow
 
 WEBSITE_HEADER_KEYWORDS = (
     "site",
@@ -21,13 +22,7 @@ URL_PREFIXES = ("http://", "https://", "www.")
 
 
 def read_excel_summary(file_path: Path) -> ExcelReadSummary:
-    if not file_path.exists():
-        raise FileNotFoundError(f"Excel file not found: {file_path}")
-
-    if file_path.suffix.lower() != ".xlsx":
-        raise ValueError("Only .xlsx files are supported at this step")
-
-    workbook = load_workbook(filename=file_path, read_only=True, data_only=True)
+    workbook = _open_workbook(file_path)
 
     try:
         worksheet = workbook[workbook.sheetnames[0]]
@@ -72,6 +67,67 @@ def read_excel_summary(file_path: Path) -> ExcelReadSummary:
         )
     finally:
         workbook.close()
+
+
+def extract_website_rows(file_path: Path) -> ExcelWebsiteRows:
+    workbook = _open_workbook(file_path)
+
+    try:
+        worksheet = workbook[workbook.sheetnames[0]]
+        rows_iter = worksheet.iter_rows(values_only=True)
+        header_row = next(rows_iter, None)
+
+        if header_row is None:
+            raise ValueError("Excel file is empty")
+
+        headers = [normalize_header(value, index) for index, value in enumerate(header_row, start=1)]
+        website_column_indexes = detect_website_columns(headers)
+
+        total_rows = 0
+        rows: list[WebsiteRow] = []
+
+        for excel_row_index, row_values in enumerate(rows_iter, start=2):
+            total_rows += 1
+            row_dict = build_row_dict(headers, row_values)
+            website_value = find_website_value(row_values, website_column_indexes)
+
+            if not website_value:
+                continue
+
+            rows.append(
+                WebsiteRow(
+                    row_index=excel_row_index,
+                    website=website_value,
+                    values=row_dict,
+                )
+            )
+
+        return ExcelWebsiteRows(
+            file_path=str(file_path),
+            sheet_name=worksheet.title,
+            headers=headers,
+            total_rows=total_rows,
+            website_columns=[headers[index] for index in website_column_indexes],
+            rows=rows,
+        )
+    finally:
+        workbook.close()
+
+
+def _open_workbook(file_path: Path):
+    if not file_path.exists():
+        raise FileNotFoundError(f"Excel file not found: {file_path}")
+
+    if file_path.suffix.lower() != ".xlsx":
+        raise ValueError("Only .xlsx files are supported at this step")
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Workbook contains no default style, apply openpyxl's default",
+            category=UserWarning,
+        )
+        return load_workbook(filename=file_path, read_only=True, data_only=True)
 
 
 def normalize_header(value: Any, column_index: int) -> str:
