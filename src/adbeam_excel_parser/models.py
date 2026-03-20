@@ -58,6 +58,9 @@ class SiteSignals(BaseModel):
     callback_only: bool = False
     quote_only: bool = False
     has_b2b_language: bool = False
+    has_wildberries_link: bool = False
+    has_ozon_link: bool = False
+    marketplace_links_found: list[str] = Field(default_factory=list)
     hacked_terms: list[str] = Field(default_factory=list)
 
 

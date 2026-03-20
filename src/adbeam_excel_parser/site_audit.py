@@ -116,6 +116,8 @@ CART_HTML_PATTERNS = (
     "checkout",
     "data-cart",
 )
+WILDBERRIES_PATTERNS = ("wildberries.ru", "www.wildberries.ru", "wb.ru", "www.wb.ru")
+OZON_PATTERNS = ("ozon.ru", "www.ozon.ru")
 
 
 @dataclass(slots=True)
@@ -238,6 +240,7 @@ def extract_signals(html: str) -> SiteSignals:
     text = parser.body.text(separator=" ", strip=True) if parser.body else parser.text(separator=" ", strip=True)
     text_lower = compact_text(text).lower()
     html_lower = html.lower()
+    marketplace_links = extract_marketplace_links(parser)
 
     hacked_terms = find_present_terms(text_lower, HACKED_TERMS)
 
@@ -253,6 +256,9 @@ def extract_signals(html: str) -> SiteSignals:
         callback_only=contains_any(text_lower, NEGATIVE_CALLBACK_TERMS),
         quote_only=contains_any(text_lower, NEGATIVE_QUOTE_TERMS),
         has_b2b_language=contains_any(text_lower, NEGATIVE_B2B_TERMS),
+        has_wildberries_link=any(contains_any(link, WILDBERRIES_PATTERNS) for link in marketplace_links),
+        has_ozon_link=any(contains_any(link, OZON_PATTERNS) for link in marketplace_links),
+        marketplace_links_found=marketplace_links,
         hacked_terms=hacked_terms,
     )
 
@@ -333,12 +339,34 @@ def extract_domain(url: str | None) -> str | None:
 
 
 def compact_text(value: str) -> str:
-    return " ".join(value.split())
+    return re.sub(r"\s+", " ", value).strip()
 
 
-def contains_any(text: str, terms: tuple[str, ...]) -> bool:
-    return any(term in text for term in terms)
+def contains_any(text: str, patterns: tuple[str, ...]) -> bool:
+    return any(pattern in text for pattern in patterns)
 
 
-def find_present_terms(text: str, terms: tuple[str, ...]) -> list[str]:
-    return [term for term in terms if term in text]
+def find_present_terms(text: str, patterns: tuple[str, ...]) -> list[str]:
+    return [pattern for pattern in patterns if pattern in text]
+
+
+def extract_marketplace_links(parser: HTMLParser) -> list[str]:
+    links: list[str] = []
+    seen: set[str] = set()
+
+    for node in parser.css("a[href]"):
+        href = (node.attributes.get("href") or "").strip()
+        if not href:
+            continue
+
+        href_lower = href.lower()
+        if not contains_any(href_lower, WILDBERRIES_PATTERNS + OZON_PATTERNS):
+            continue
+
+        if href_lower in seen:
+            continue
+
+        seen.add(href_lower)
+        links.append(href)
+
+    return links
